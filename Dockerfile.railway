@@ -50,7 +50,7 @@ if ob sync-status --path /vault --json >/dev/null 2>&1; then
   echo "[init] Existing vault configuration found"
 else
   echo "[init] Configuring encrypted vault..."
-  ob sync-setup --vault "$VAULT_NAME" --path /vault --password "$VAULT_PASSWORD" --device-name "Railway Second Brain" --json
+  ob sync-setup --vault "$VAULT_NAME" --path /vault --password "$VAULT_PASSWORD" --device-name "Railway Second Brain"
 fi
 
 echo "[init] Initial sync before enabling MCP..."
