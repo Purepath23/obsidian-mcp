@@ -22,6 +22,7 @@ COPY package.json .
 
 # Create vault directory
 RUN mkdir -p /vault
+ENV XDG_CONFIG_HOME=/vault/.config
 
 # Startup script: login, setup, sync in background, then start MCP server
 COPY <<'ENTRYPOINT' /app/start.sh
@@ -33,8 +34,15 @@ set -e
 : "${VAULT_NAME:?Missing VAULT_NAME}"
 : "${VAULT_PASSWORD:?Missing VAULT_PASSWORD}"
 : "${AUTH_TOKEN:?Missing AUTH_TOKEN}"
-echo "[init] Logging into Obsidian Headless non-interactively..."
-ob login --email "$OBSIDIAN_EMAIL" --password "$OBSIDIAN_PASSWORD"
+echo "[init] Checking saved Obsidian login..."
+if ! ob sync-list-remote --json >/dev/null 2>&1; then
+  attempt=1
+  until ob login --email "$OBSIDIAN_EMAIL" --password "$OBSIDIAN_PASSWORD"; do
+    echo "[warn] Obsidian login unavailable; retry $attempt in 120 seconds"
+    sleep 120
+    attempt=$((attempt + 1))
+  done
+fi
 
 echo "[init] Setting up vault: $VAULT_NAME"
 cd /vault
