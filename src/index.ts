@@ -19,6 +19,7 @@ process.on('unhandledRejection', (reason) => {
 });
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { existsSync } from 'fs';
 import { glob } from 'glob';
@@ -621,6 +622,30 @@ app.post('/messages', authMiddleware, async (req, res) => {
     }
   }
 });
+
+// Modern MCP Streamable HTTP endpoint (stateless, one isolated transport per call).
+app.use('/mcp', express.json({ limit: MAX_BODY_SIZE }));
+app.post('/mcp', authMiddleware, async (req, res) => {
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  });
+  const server = createServer();
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error('[mcp] Request failed:', error);
+    if (!res.headersSent) res.status(500).json({
+      jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null,
+    });
+  } finally {
+    await transport.close().catch(() => {});
+    await server.close().catch(() => {});
+  }
+});
+app.get('/mcp', authMiddleware, (_req, res) => { res.status(405).set('Allow', 'POST').end(); });
+app.delete('/mcp', authMiddleware, (_req, res) => { res.status(405).set('Allow', 'POST').end(); });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
