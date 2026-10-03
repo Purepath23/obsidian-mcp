@@ -28,11 +28,13 @@ COPY <<'ENTRYPOINT' /app/start.sh
 #!/bin/bash
 set -e
 
-: "${OBSIDIAN_AUTH_TOKEN:?Missing OBSIDIAN_AUTH_TOKEN}"
+: "${OBSIDIAN_EMAIL:?Missing OBSIDIAN_EMAIL}"
+: "${OBSIDIAN_PASSWORD:?Missing OBSIDIAN_PASSWORD}"
 : "${VAULT_NAME:?Missing VAULT_NAME}"
 : "${VAULT_PASSWORD:?Missing VAULT_PASSWORD}"
 : "${AUTH_TOKEN:?Missing AUTH_TOKEN}"
-echo "[init] Headless token available; no interactive login needed"
+echo "[init] Logging into Obsidian Headless non-interactively..."
+ob login --email "$OBSIDIAN_EMAIL" --password "$OBSIDIAN_PASSWORD"
 
 echo "[init] Setting up vault: $VAULT_NAME"
 cd /vault
