@@ -138,7 +138,7 @@ function authMiddleware(
   ) {
     return next();
   }
-  console.warn('[auth] rejected MCP request', { path: req.path, vaultTokenHeaderPresent: typeof vaultHeader === 'string', authorizationPresent: header.length > 0, suppliedLength: supplied.length, expectedLength: expected.length });
+  console.warn('[auth] rejected MCP request', { path: req.path, vaultTokenHeaderPresent: typeof vaultHeader === 'string', authorizationPresent: header.length > 0, suppliedLength: supplied.length, expectedLength: expected.length, oneExtraAtStart: supplied.slice(1) === expected, oneExtraAtEnd: supplied.slice(0,-1) === expected });
   res.status(401).json({ error: 'Unauthorized' });
 }
 
