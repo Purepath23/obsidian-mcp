@@ -639,6 +639,9 @@ app.post('/mcp', authMiddleware, async (req, res) => {
   });
   try {
     await httpReady;
+    // For this internal bridge, omit the optional forwarded protocol header;
+    // the MCP transport uses its own established negotiation and validation.
+    delete req.headers['mcp-protocol-version'];
     await httpTransport.handleRequest(req, res, req.body);
   } catch (error) {
     console.error('[mcp] Request failed:', error);
