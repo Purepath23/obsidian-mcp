@@ -633,6 +633,10 @@ const httpTransport = new StreamableHTTPServerTransport({
 const httpReady = httpServer.connect(httpTransport);
 
 app.post('/mcp', authMiddleware, async (req, res) => {
+  const requestInfo = { method: req.body?.method, isBatch: Array.isArray(req.body), contentType: req.get('content-type'), accept: req.get('accept'), protocolVersion: req.get('mcp-protocol-version'), sessionHeaderPresent: Boolean(req.get('mcp-session-id')) };
+  res.on('finish', () => {
+    if (res.statusCode >= 400) console.warn('[mcp] HTTP rejection', { ...requestInfo, status: res.statusCode });
+  });
   try {
     await httpReady;
     await httpTransport.handleRequest(req, res, req.body);
