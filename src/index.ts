@@ -215,6 +215,10 @@ server.tool(
   }
 );
 
+server.tool('vault_read', 'Read a markdown document', { path: z.string() }, async ({ path }) => {
+ const note = await requireVault().readNote(path);
+ return { content: [{ type: 'text', text: JSON.stringify({ path, content: note.content, frontmatter: note.frontmatter }) }] };
+});
 // ── read_note ─────────────────────────────────────────────────────────────────
 server.tool(
   'read_note',
