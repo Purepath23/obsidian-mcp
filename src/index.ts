@@ -275,6 +275,30 @@ server.tool(
   }
 );
 
+// Compatibility aliases for the existing ChatGPT private tunnel connector.
+// vault_write creates new files only: it deliberately never overwrites an existing note.
+server.tool(
+  'vault_write',
+  'Create a markdown file with content in the Obsidian vault.',
+  { path: z.string(), content: z.string() },
+  async ({ path, content }, extra) => {
+    const result = await requireVault().writeNote(path, content, undefined, { overwrite: false });
+    auditLog('CREATE', path, extra.sessionId);
+    return { content: [{ type: 'text', text: `Created: ${result.path}` }] };
+  }
+);
+
+server.tool(
+  'vault_append',
+  'Append text to a note.',
+  { path: z.string(), content: z.string() },
+  async ({ path, content }, extra) => {
+    await requireVault().appendNote(path, content);
+    auditLog('APPEND', path, extra.sessionId);
+    return { content: [{ type: 'text', text: `Appended: ${path}` }] };
+  }
+);
+
 // ── upload_attachment ─────────────────────────────────────────────────────────
 server.tool(
   'upload_attachment',
