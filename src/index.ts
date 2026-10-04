@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { timingSafeEqual } from 'crypto';
+import { timingSafeEqual, randomUUID } from 'crypto';
 
 // ─── Crash Protection ────────────────────────────────────────────────────────
 // Log unhandled errors and exit. The process manager (pm2, Docker, s6) should
@@ -622,29 +622,62 @@ app.post('/messages', authMiddleware, async (req, res) => {
   }
 });
 
-// Modern MCP Streamable HTTP endpoint (stateless, one isolated transport per call).
+// Modern MCP Streamable HTTP endpoint. Maintain one MCP server/transport per
+// session so tools/call follows a successfully initialized session.
 app.use('/mcp', express.json({ limit: MAX_BODY_SIZE }));
+const httpSessions = new Map<string, { transport: StreamableHTTPServerTransport; server: McpServer }>();
+
 app.post('/mcp', authMiddleware, async (req, res) => {
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-    enableJsonResponse: true,
-  });
-  const server = createServer();
-  try {
+  const sessionId = req.header('mcp-session-id');
+  let session = sessionId ? httpSessions.get(sessionId) : undefined;
+
+  if (!session && !sessionId && req.body?.method === 'initialize') {
+    const server = createServer();
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      enableJsonResponse: true,
+      onsessioninitialized: (id: string) => {
+        httpSessions.set(id, { transport, server });
+      },
+    });
+    transport.onclose = () => {
+      if (transport.sessionId) httpSessions.delete(transport.sessionId);
+      server.close().catch(() => {});
+    };
+    session = { transport, server };
     await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+  }
+  if (!session) {
+    res.status(400).json({
+      jsonrpc: '2.0',
+      error: { code: -32000, message: 'Unknown MCP session. Initialize first.' },
+      id: req.body?.id ?? null,
+    });
+    return;
+  }
+  res.on('finish', () => {
+    if (res.statusCode >= 400) console.warn('[mcp] Request failed', { method: req.body?.method, status: res.statusCode, hasSessionHeader: Boolean(sessionId) });
+  });
+  try {
+    await session.transport.handleRequest(req, res, req.body);
   } catch (error) {
     console.error('[mcp] Request failed:', error);
     if (!res.headersSent) res.status(500).json({
-      jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null,
+      jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: req.body?.id ?? null,
     });
-  } finally {
-    await transport.close().catch(() => {});
-    await server.close().catch(() => {});
   }
 });
-app.get('/mcp', authMiddleware, (_req, res) => { res.status(405).set('Allow', 'POST').end(); });
-app.delete('/mcp', authMiddleware, (_req, res) => { res.status(405).set('Allow', 'POST').end(); });
+
+app.get('/mcp', authMiddleware, async (req, res) => {
+  const session = httpSessions.get(req.header('mcp-session-id') ?? '');
+  if (!session) { res.status(405).set('Allow', 'POST').end(); return; }
+  await session.transport.handleRequest(req, res);
+});
+app.delete('/mcp', authMiddleware, async (req, res) => {
+  const session = httpSessions.get(req.header('mcp-session-id') ?? '');
+  if (!session) { res.status(404).end(); return; }
+  await session.transport.handleRequest(req, res);
+});
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
