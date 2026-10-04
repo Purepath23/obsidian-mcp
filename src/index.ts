@@ -127,7 +127,7 @@ function authMiddleware(
   if (!AUTH_TOKEN) return next(); // no auth configured → open (rely on network-level security)
   const header = req.headers.authorization ?? '';
   const vaultHeader = req.headers['x-obsidian-token'];
-  const supplied = typeof vaultHeader === 'string' && vaultHeader.length > 0 ? vaultHeader : header;
+  const supplied = typeof vaultHeader === 'string' && vaultHeader.length > 0 ? vaultHeader.trim() : header;
   const expected = supplied === vaultHeader ? AUTH_TOKEN : `Bearer ${AUTH_TOKEN}`;
   // Use timing-safe comparison to prevent token recovery via response-time analysis
   const headerBuf = Buffer.from(supplied);
