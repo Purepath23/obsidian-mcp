@@ -34,42 +34,47 @@ set -e
 : "${VAULT_NAME:?Missing VAULT_NAME}"
 : "${VAULT_PASSWORD:?Missing VAULT_PASSWORD}"
 : "${AUTH_TOKEN:?Missing AUTH_TOKEN}"
-echo "[init] Checking saved Obsidian login..."
-if ! ob sync-list-remote --json >/dev/null 2>&1; then
-  attempt=1
-  until ob login --email "$OBSIDIAN_EMAIL" --password "$OBSIDIAN_PASSWORD"; do
-    echo "[warn] Obsidian login unavailable; retry $attempt in 120 seconds"
-    sleep 120
-    attempt=$((attempt + 1))
-  done
-fi
-
-echo "[init] Setting up vault: $VAULT_NAME"
-cd /vault
-if ob sync-status --path /vault --json >/dev/null 2>&1; then
-  echo "[init] Existing vault configuration found"
-else
-  echo "[init] Configuring encrypted vault..."
-  ob sync-setup --vault "$VAULT_NAME" --path /vault --password "$VAULT_PASSWORD" --device-name "Railway Second Brain"
-fi
-
-echo "[init] Initial sync before enabling MCP..."
-ob sync --path /vault
-
-echo "[init] Starting continuous sync..."
-ob sync --path /vault --continuous &
-SYNC_PID=$!
-
-echo "[init] Starting obsidian-mcp server..."
+# Keep the MCP API available from the persistent vault even if Obsidian's
+# auth/sync service is temporarily rate-limited or a prior deploy holds a lock.
+echo "[init] Starting protected MCP API..."
 cd /app
 node dist/index.js &
 MCP_PID=$!
 
-# If either process exits, kill the other and exit
-trap "kill $SYNC_PID $MCP_PID 2>/dev/null; exit 1" SIGTERM SIGINT
-wait -n $SYNC_PID $MCP_PID
-echo "[error] A process exited unexpectedly, shutting down..."
-kill $SYNC_PID $MCP_PID 2>/dev/null
+sync_loop() {
+  while true; do
+    echo "[sync] Checking saved Obsidian login..."
+    if ! ob sync-list-remote --json >/dev/null 2>&1; then
+      if ! ob login --email "$OBSIDIAN_EMAIL" --password "$OBSIDIAN_PASSWORD"; then
+        echo "[sync] Login temporarily unavailable; retrying in 120 seconds"
+        sleep 120
+        continue
+      fi
+    fi
+    if [ ! -f /vault/.railway-vault-configured ]; then
+      echo "[sync] Configuring encrypted vault..."
+      if ob sync-setup --vault "$VAULT_NAME" --path /vault --password "$VAULT_PASSWORD" --device-name "Railway Second Brain"; then
+        touch /vault/.railway-vault-configured
+      else
+        echo "[sync] Setup unavailable; retrying in 120 seconds"
+        sleep 120
+        continue
+      fi
+    fi
+    echo "[sync] Starting continuous sync..."
+    if ! ob sync --path /vault --continuous; then
+      echo "[sync] Sync unavailable or lock held by previous deployment; retrying in 120 seconds"
+    fi
+    sleep 120
+  done
+}
+sync_loop &
+SYNC_PID=$!
+
+trap 'kill "$SYNC_PID" "$MCP_PID" 2>/dev/null || true; exit 0' SIGTERM SIGINT
+wait "$MCP_PID"
+echo "[error] MCP API stopped."
+kill "$SYNC_PID" 2>/dev/null || true
 exit 1
 ENTRYPOINT
 RUN chmod +x /app/start.sh
