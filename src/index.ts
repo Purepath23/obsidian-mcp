@@ -138,6 +138,7 @@ function authMiddleware(
   ) {
     return next();
   }
+  console.warn('[auth] rejected MCP request', { path: req.path, vaultTokenHeaderPresent: typeof vaultHeader === 'string', authorizationPresent: header.length > 0, suppliedLength: supplied.length, expectedLength: expected.length });
   res.status(401).json({ error: 'Unauthorized' });
 }
 
