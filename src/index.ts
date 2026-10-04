@@ -35,6 +35,7 @@ const BIND_ADDRESS = process.env.BIND_ADDRESS ?? '127.0.0.1'; // #7: default to 
 const DAILY_NOTE_FOLDER = process.env.DAILY_NOTE_FOLDER ?? 'Journal';
 const DAILY_NOTE_FORMAT = process.env.DAILY_NOTE_FORMAT ?? 'YYYY-MM-DD'; // e.g. 'MM-DD-YYYY DayOfWeek'
 const AUTH_TOKEN = process.env.AUTH_TOKEN; // optional bearer token
+const TUNNEL_SHARED_SECRET = process.env.TUNNEL_SHARED_SECRET; // distinct tunnel-to-server credential
 const MAX_BODY_SIZE = process.env.MAX_BODY_SIZE ?? '1mb'; // #6: request size limit
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
@@ -124,21 +125,16 @@ function authMiddleware(
   res: express.Response,
   next: express.NextFunction
 ) {
-  if (!AUTH_TOKEN) return next(); // no auth configured → open (rely on network-level security)
-  const header = req.headers.authorization ?? '';
-  const vaultHeader = req.headers['x-obsidian-token'];
-  const supplied = typeof vaultHeader === 'string' && vaultHeader.length > 0 ? vaultHeader.trim() : header;
-  const expected = supplied === vaultHeader ? AUTH_TOKEN : `Bearer ${AUTH_TOKEN}`;
-  // Use timing-safe comparison to prevent token recovery via response-time analysis
-  const headerBuf = Buffer.from(supplied);
-  const expectedBuf = Buffer.from(expected);
-  if (
-    headerBuf.length === expectedBuf.length &&
-    timingSafeEqual(headerBuf, expectedBuf)
-  ) {
-    return next();
-  }
-  console.warn('[auth] rejected MCP request', { path: req.path, vaultTokenHeaderPresent: typeof vaultHeader === 'string', authorizationPresent: header.length > 0, suppliedLength: supplied.length, expectedLength: expected.length, oneExtraAtStart: supplied.slice(1) === expected, oneExtraAtEnd: supplied.slice(0,-1) === expected });
+  if (!AUTH_TOKEN && !TUNNEL_SHARED_SECRET) return next();
+  const bearer = req.headers.authorization ?? '';
+  const tunnel = req.headers['x-obsidian-token'];
+  const matches = (provided: string, secret: string): boolean => {
+    const a = Buffer.from(provided);
+    const b = Buffer.from(secret);
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
+  if (AUTH_TOKEN && matches(bearer, `Bearer ${AUTH_TOKEN}`)) return next();
+  if (TUNNEL_SHARED_SECRET && typeof tunnel === 'string' && matches(tunnel.trim(), TUNNEL_SHARED_SECRET)) return next();
   res.status(401).json({ error: 'Unauthorized' });
 }
 
