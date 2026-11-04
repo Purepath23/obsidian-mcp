@@ -69,8 +69,9 @@ async function daily({ force = false } = {}) {
     const bundle = await scanVault(vaultDir);
     const revision = createHash('sha256').update(bundle.files.map(file => `${file.path}:${file.hash}`).sort().join('\n')).digest('hex');
     const old = await readDaily(dataDir);
-    if (!force && old?.day === todayRome() && old?.source_revision === revision) return old;
-    const result = { ...await generateDaily(bundle, { dataDir, apiKey, maxMonthlyUsd }), source_revision: revision };
+    if (!force && old?.day === todayRome() && old?.source_revision === revision && old?.ai_configured === !!apiKey) return old;
+    const result = { ...await generateDaily(bundle, { dataDir, apiKey, maxMonthlyUsd }),
+      source_revision: revision, ai_configured: !!apiKey };
     await saveDaily(dataDir, result);
     return result;
   })().finally(() => { currentDaily = null; });
