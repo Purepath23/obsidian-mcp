@@ -19,6 +19,7 @@ WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY package.json .
+COPY second-brain /app/second-brain
 
 # Create vault directory
 RUN mkdir -p /vault
@@ -40,6 +41,15 @@ echo "[init] Starting protected MCP API..."
 cd /app
 node dist/index.js &
 MCP_PID=$!
+
+# Optional Second Brain phone API. Its token is separate from the full MCP token.
+# This process only reads the shared vault; the existing Headless process owns Sync.
+if [ -n "${SECOND_BRAIN_TOKEN:-}" ]; then
+  echo "[init] Starting protected Second Brain API..."
+  PORT=8081 VAULT_DIR=/vault DATA_DIR=/vault/.second-brain-service SYNC_EXTERNAL=1 \
+    node /app/second-brain/server/src/server.mjs &
+  SECOND_BRAIN_PID=$!
+fi
 
 sync_loop() {
   while true; do
@@ -71,10 +81,16 @@ sync_loop() {
 sync_loop &
 SYNC_PID=$!
 
-trap 'kill "$SYNC_PID" "$MCP_PID" 2>/dev/null || true; exit 0' SIGTERM SIGINT
+shutdown() {
+  kill "$SYNC_PID" "$MCP_PID" 2>/dev/null || true
+  if [ -n "${SECOND_BRAIN_PID:-}" ]; then kill "$SECOND_BRAIN_PID" 2>/dev/null || true; fi
+  exit 0
+}
+trap shutdown SIGTERM SIGINT
 wait "$MCP_PID"
 echo "[error] MCP API stopped."
 kill "$SYNC_PID" 2>/dev/null || true
+if [ -n "${SECOND_BRAIN_PID:-}" ]; then kill "$SECOND_BRAIN_PID" 2>/dev/null || true; fi
 exit 1
 ENTRYPOINT
 RUN chmod +x /app/start.sh
