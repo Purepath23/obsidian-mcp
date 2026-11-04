@@ -1,6 +1,6 @@
 # Second Brain phone service (prepared, disabled by default)
 
-This code adds a separate HTTPS API on container port 8081 to the existing Railway service. The MCP API on the original port and its token are unchanged. The service starts only when `SECOND_BRAIN_TOKEN` is configured. Do not put that token, an Obsidian password, or an OpenAI key in this repository or in the Android APK.
+This code adds a protected phone API on local container port 8081 to the existing Railway service. The public MCP domain forwards `/second-brain/*` to that API while keeping all existing MCP routes and its token unchanged. The phone API starts only when `SECOND_BRAIN_TOKEN` is configured. Do not put that token, an Obsidian password, or an OpenAI key in this repository or in the Android APK.
 
 The existing Obsidian Headless process remains the sole sync process for `/vault`. This API reads the same persistent vault and writes only `SecondBrain/Idee/*.md` or `SecondBrain/Elementi/*.md`. Headless Sync uploads those changes asynchronously; a `202` response says the note is durable on the Railway volume but **does not prove** it has reached the remote vault yet. The Android client must show that distinction.
 
@@ -9,7 +9,7 @@ The existing Obsidian Headless process remains the sole sync process for `/vault
 1. Review the diff and build the container. Keep a single Railway replica and the existing persistent volume.
 2. Set a new random `SECOND_BRAIN_TOKEN` (at least 32 characters). It must differ from the MCP `AUTH_TOKEN`.
 3. Set `OPENAI_API_KEY` from a dedicated OpenAI API project. Configure that project's monthly hard spend limit separately. The service has a conservative local `$4` estimate cap by default (`MAX_MONTHLY_USD=4`) for Alberto's requested **5 € per month AI target**. Exchange rates, price changes, other API usage, and delayed provider enforcement mean this is not an exact euro billing guarantee.
-4. Add a separate Railway HTTPS domain pointing to port 8081. Do not repoint the MCP domain. Set the phone's service URL and token once using its private pairing screen.
+4. Use the existing Railway HTTPS domain as the phone's service URL. The Android client adds `/second-brain` automatically. Set that URL and the separate phone token once using its private pairing screen.
 5. Verify Obsidian Headless is current, then test a disposable idea and confirm it appears on another Obsidian device. Only then test scheduled recommendations and notifications.
 
 Railway hosting charges are separate from the OpenAI API target. No paid deployment or API call is triggered by these source files alone.

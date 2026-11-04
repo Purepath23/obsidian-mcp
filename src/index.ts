@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import { timingSafeEqual } from 'crypto';
+import http from 'node:http';
 
 // ─── Crash Protection ────────────────────────────────────────────────────────
 // Log unhandled errors and exit. The process manager (pm2, Docker, s6) should
@@ -572,6 +573,26 @@ app.use('/health', express.json({ limit: MAX_BODY_SIZE }));
 
 // #3: Rate limiting on all authenticated routes
 app.use(rateLimitMiddleware);
+
+// The phone API has its own bearer token and stays on a separate local port.
+// Route it through the existing Railway HTTPS domain without exposing the
+// full MCP token to the Android app or changing the MCP domain's target port.
+app.use('/second-brain', (req, res) => {
+  const headers = { ...req.headers };
+  delete headers.host;
+  delete headers.connection;
+  const upstream = http.request({ hostname: '127.0.0.1', port: 8081,
+    path: req.originalUrl.slice('/second-brain'.length) || '/', method: req.method, headers }, reply => {
+    res.writeHead(reply.statusCode ?? 502, reply.headers);
+    reply.pipe(res);
+  });
+  upstream.setTimeout(70_000, () => upstream.destroy(new Error('Phone API timeout')));
+  upstream.on('error', () => {
+    if (res.headersSent) res.destroy();
+    else res.status(503).json({ error: 'Second Brain non disponibile.' });
+  });
+  req.pipe(upstream);
+});
 
 // Health check (unauthenticated — useful for uptime monitoring)
 app.get('/health', async (_req, res) => {
