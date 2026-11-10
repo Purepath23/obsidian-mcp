@@ -45,35 +45,12 @@ public class CaptureAccessibilityService extends AccessibilityService {
         conversationId=p.getString("current_conversation_id","");
         conversationTitle=p.getString("current_conversation_title","ChatGPT");
         if(conversationId.isEmpty()) newConversation("ChatGPT");
-        try {
-            JSONObject j=new JSONObject();
-            j.put("kind","service_connected");
-            j.put("packageName",CHATGPT_PACKAGE);
-            ApiClient.ping(this,j);
-        } catch(Exception ignored){}
         ApiClient.flush(this);
     }
 
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if(event==null || event.getPackageName()==null) return;
         if(!CHATGPT_PACKAGE.contentEquals(event.getPackageName())) return;
-
-        try {
-            long now=System.currentTimeMillis();
-            AccessibilityNodeInfo root=getRootInActiveWindow();
-            String snapshot=root==null?"":windowSnapshot(root);
-            String digest=hash(snapshot);
-            if(now-lastSnapshotPingAt>800 || !digest.equals(lastWindowDigest)) {
-                JSONObject d=new JSONObject();
-                d.put("kind","window_snapshot");
-                d.put("eventType",String.valueOf(event.getEventType()));
-                d.put("packageName",String.valueOf(event.getPackageName()));
-                d.put("text",snapshot.length()>3500?snapshot.substring(0,3500):snapshot);
-                ApiClient.ping(this,d);
-                lastSnapshotPingAt=now;
-                lastWindowDigest=digest;
-            }
-        } catch(Exception ignored){}
 
         int type=event.getEventType();
 
@@ -161,13 +138,19 @@ public class CaptureAccessibilityService extends AccessibilityService {
         }
 
         if(awaitingAssistant && !lastUser.isEmpty()) {
-            String candidate=extractAfterUser(nodes,lastUser);
-            if(!candidate.isEmpty() && isSubstantiveAssistant(candidate) && !candidate.equals(assistantCandidate)) {
-                assistantCandidate=candidate;
-                candidateChangedAt=System.currentTimeMillis();
-                handler.removeCallbacks(finalizeAssistant);
-                handler.postDelayed(finalizeAssistant, STABLE_MS);
-            }
+            try {
+                String snapshot=windowSnapshot(root);
+                String digest=hash(snapshot);
+                if(!digest.equals(lastWindowDigest)) {
+                    JSONObject s=new JSONObject();
+                    s.put("conversationId",conversationId);
+                    s.put("title",conversationTitle);
+                    s.put("userText",lastUser);
+                    s.put("snapshot",snapshot);
+                    ApiClient.sendSnapshot(this,s);
+                    lastWindowDigest=digest;
+                }
+            } catch(Exception ignored){}
         }
         ApiClient.flush(this);
     }
@@ -177,9 +160,11 @@ public class CaptureAccessibilityService extends AccessibilityService {
         if(text.isEmpty()) return;
         lastUser=text;
         lastTyped="";
+        lastWindowDigest="";
         awaitingAssistant=true;
         assistantCandidate="";
         candidateChangedAt=System.currentTimeMillis();
+        handler.removeCallbacks(finalizeAssistant);
         postTurn("user",text,hash(conversationId+"|user|"+System.currentTimeMillis()+"|"+text));
     }
 
