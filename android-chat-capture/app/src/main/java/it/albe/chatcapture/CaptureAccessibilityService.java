@@ -34,7 +34,9 @@ public class CaptureAccessibilityService extends AccessibilityService {
         "copy","copia","like","dislike","share","condividi","regenerate","rigenera",
         "read aloud","leggi ad alta voce","edit","modifica","stop","interrompi",
         "send","invia","new chat","nuova chat","voice","voce","attach","allega",
-        "menu","altre azioni","more actions","prosegui","continue","sto pensando","thinking"
+        "menu","altre azioni","more actions","prosegui","continue","sto pensando","thinking",
+        "rispondi a chatgpt","reply to chatgpt","dettatura","dictation",
+        "allegato","attachment","in elaborazione…","in elaborazione...","processing…","processing..."
     ));
 
     @Override public void onServiceConnected() {
@@ -160,7 +162,7 @@ public class CaptureAccessibilityService extends AccessibilityService {
 
         if(awaitingAssistant && !lastUser.isEmpty()) {
             String candidate=extractAfterUser(nodes,lastUser);
-            if(!candidate.isEmpty() && !candidate.equals(assistantCandidate)) {
+            if(!candidate.isEmpty() && isSubstantiveAssistant(candidate) && !candidate.equals(assistantCandidate)) {
                 assistantCandidate=candidate;
                 candidateChangedAt=System.currentTimeMillis();
                 handler.removeCallbacks(finalizeAssistant);
@@ -268,12 +270,30 @@ public class CaptureAccessibilityService extends AccessibilityService {
         return sb.toString();
     }
 
+    private boolean isSubstantiveAssistant(String s) {
+        if(s==null) return false;
+        String cleaned=s.trim();
+        if(cleaned.length()<12) return false;
+        String[] lines=cleaned.split("\\n+");
+        int meaningful=0;
+        for(String line:lines) {
+            String t=line.trim();
+            if(t.isEmpty() || isUiText(t) || isTransientUiText(t)) continue;
+            if(t.length()>=8) meaningful++;
+        }
+        return meaningful>0;
+    }
+
     private boolean isTransientUiText(String s) {
         String l=s==null?"":s.trim().toLowerCase(Locale.ROOT);
         if(l.isEmpty()) return true;
         if(l.startsWith("sto pensando") || l.startsWith("thinking")) return true;
         if(l.startsWith("elaborato per ") || l.startsWith("thought for ")) return true;
+        if(l.startsWith("in elaborazione") || l.startsWith("processing")) return true;
         if(l.equals("prosegui") || l.equals("continue")) return true;
+        if(l.equals("rispondi a chatgpt") || l.equals("reply to chatgpt")) return true;
+        if(l.equals("dettatura") || l.equals("dictation")) return true;
+        if(l.equals("allegato") || l.equals("attachment")) return true;
         return false;
     }
 
@@ -282,6 +302,8 @@ public class CaptureAccessibilityService extends AccessibilityService {
         if(UI_BLACKLIST.contains(l)) return true;
         if(l.startsWith("chatgpt can make mistakes") || l.startsWith("chatgpt può commettere errori")) return true;
         if(l.startsWith("allega") || l.startsWith("attach")) return true;
+        if(l.startsWith("rispondi a chatgpt") || l.startsWith("reply to chatgpt")) return true;
+        if(l.startsWith("dettatura") || l.startsWith("dictation")) return true;
         if(l.startsWith("microfono") || l.startsWith("microphone")) return true;
         if(l.startsWith("modalità voce") || l.startsWith("voice mode")) return true;
         if(l.matches("^(copy|copia|share|condividi|like|dislike|edit|modifica|menu|altre azioni|more actions).*$")) return true;
