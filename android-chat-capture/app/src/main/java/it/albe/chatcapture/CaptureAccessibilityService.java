@@ -33,7 +33,8 @@ public class CaptureAccessibilityService extends AccessibilityService {
     private static final Set<String> UI_BLACKLIST = new HashSet<>(Arrays.asList(
         "copy","copia","like","dislike","share","condividi","regenerate","rigenera",
         "read aloud","leggi ad alta voce","edit","modifica","stop","interrompi",
-        "send","invia","new chat","nuova chat","voice","voce","attach","allega"
+        "send","invia","new chat","nuova chat","voice","voce","attach","allega",
+        "menu","altre azioni","more actions","prosegui","continue","sto pensando","thinking"
     ));
 
     @Override public void onServiceConnected() {
@@ -127,6 +128,27 @@ public class CaptureAccessibilityService extends AccessibilityService {
             lastTyped=editable;
         }
 
+        // Fallback robusto: nell'app ChatGPT il tap su "Invia" non sempre
+        // genera un evento clic leggibile. Quando il testo digitato ricompare
+        // nella conversazione come nodo non-editabile, consideriamo il turno inviato.
+        if(!lastTyped.isEmpty()) {
+            boolean typedVisibleAsMessage=false;
+            String nt=normalize(lastTyped);
+            for(NodeText n:nodes) {
+                if(!n.editable && normalize(n.text).equals(nt)) {
+                    typedVisibleAsMessage=true;
+                    break;
+                }
+            }
+            boolean stillInComposer=!editable.isEmpty() && normalize(editable).equals(nt);
+            if(typedVisibleAsMessage && !stillInComposer && !normalize(lastUser).equals(nt)) {
+                String sent=lastTyped.trim();
+                lastTyped="";
+                lastEditable="";
+                sendUser(sent);
+            }
+        }
+
         if(!pendingUser.isEmpty()) {
             boolean seen=false;
             for(NodeText n:nodes) if(!n.editable && normalize(n.text).equals(normalize(pendingUser))) {seen=true;break;}
@@ -152,6 +174,7 @@ public class CaptureAccessibilityService extends AccessibilityService {
         text=text.trim();
         if(text.isEmpty()) return;
         lastUser=text;
+        lastTyped="";
         awaitingAssistant=true;
         assistantCandidate="";
         candidateChangedAt=System.currentTimeMillis();
@@ -198,6 +221,7 @@ public class CaptureAccessibilityService extends AccessibilityService {
             NodeText n=nodes.get(i);
             String t=n.text.trim();
             if(n.editable || t.isEmpty() || isUiText(t) || normalize(t).equals(nu)) continue;
+            if(isTransientUiText(t)) continue;
             if(t.length()==1 && !Character.isLetterOrDigit(t.charAt(0))) continue;
             parts.add(t);
         }
@@ -244,11 +268,23 @@ public class CaptureAccessibilityService extends AccessibilityService {
         return sb.toString();
     }
 
+    private boolean isTransientUiText(String s) {
+        String l=s==null?"":s.trim().toLowerCase(Locale.ROOT);
+        if(l.isEmpty()) return true;
+        if(l.startsWith("sto pensando") || l.startsWith("thinking")) return true;
+        if(l.startsWith("elaborato per ") || l.startsWith("thought for ")) return true;
+        if(l.equals("prosegui") || l.equals("continue")) return true;
+        return false;
+    }
+
     private boolean isUiText(String s) {
         String l=s.trim().toLowerCase(Locale.ROOT);
         if(UI_BLACKLIST.contains(l)) return true;
         if(l.startsWith("chatgpt can make mistakes") || l.startsWith("chatgpt può commettere errori")) return true;
-        if(l.matches("^(copy|copia|share|condividi|like|dislike|edit|modifica).*$")) return true;
+        if(l.startsWith("allega") || l.startsWith("attach")) return true;
+        if(l.startsWith("microfono") || l.startsWith("microphone")) return true;
+        if(l.startsWith("modalità voce") || l.startsWith("voice mode")) return true;
+        if(l.matches("^(copy|copia|share|condividi|like|dislike|edit|modifica|menu|altre azioni|more actions).*$")) return true;
         return false;
     }
 
