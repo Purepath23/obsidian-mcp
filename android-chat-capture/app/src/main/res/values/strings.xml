@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ChatGPT → Obsidian</string>
+    <string name="accessibility_description">Salva in tempo reale le conversazioni dell'app ChatGPT nel Second Brain Obsidian.</string>
+</resources>
