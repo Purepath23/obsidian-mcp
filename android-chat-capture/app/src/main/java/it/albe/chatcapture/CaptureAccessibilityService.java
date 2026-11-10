@@ -18,6 +18,7 @@ public class CaptureAccessibilityService extends AccessibilityService {
 
     private final Handler handler=new Handler(Looper.getMainLooper());
     private String lastEditable="";
+    private String lastTyped="";
     private String pendingUser="";
     private String lastUser="";
     private String assistantCandidate="";
@@ -46,19 +47,44 @@ public class CaptureAccessibilityService extends AccessibilityService {
         if(event==null || event.getPackageName()==null) return;
         if(!CHATGPT_PACKAGE.contentEquals(event.getPackageName())) return;
 
-        if(event.getEventType()==AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            String clicked=nodeText(event.getSource()).trim();
-            String low=clicked.toLowerCase(Locale.ROOT);
-            if(low.contains("new chat") || low.contains("nuova chat")) {
-                newConversation("ChatGPT");
-            } else {
-                AccessibilityNodeInfo s=event.getSource();
-                String id=s!=null && s.getViewIdResourceName()!=null?s.getViewIdResourceName().toLowerCase(Locale.ROOT):"";
-                if((id.contains("conversation")||id.contains("history")) && isPossibleTitle(clicked)) {
-                    switchConversationByTitle(clicked);
+        int type=event.getEventType();
+
+        if(type==AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+            AccessibilityNodeInfo s=event.getSource();
+            if(s!=null && s.isEditable()) {
+                String t=nodeText(s).trim();
+                if(!t.isEmpty()) {
+                    lastTyped=t;
+                    lastEditable=t;
                 }
             }
         }
+
+        if(type==AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            AccessibilityNodeInfo s=event.getSource();
+            String clicked=nodeText(s).trim();
+            String low=clicked.toLowerCase(Locale.ROOT);
+            String id=s!=null && s.getViewIdResourceName()!=null?s.getViewIdResourceName().toLowerCase(Locale.ROOT):"";
+            String desc=s!=null && s.getContentDescription()!=null?s.getContentDescription().toString().toLowerCase(Locale.ROOT):"";
+
+            if(low.contains("new chat") || low.contains("nuova chat") || desc.contains("new chat") || desc.contains("nuova chat")) {
+                newConversation("ChatGPT");
+            } else if(
+                low.equals("send") || low.equals("invia") ||
+                desc.contains("send") || desc.contains("invia") ||
+                id.contains("send")
+            ) {
+                if(!lastTyped.trim().isEmpty()) {
+                    pendingUser=lastTyped.trim();
+                    sendUser(pendingUser);
+                    pendingUser="";
+                    lastTyped="";
+                }
+            } else if((id.contains("conversation")||id.contains("history")) && isPossibleTitle(clicked)) {
+                switchConversationByTitle(clicked);
+            }
+        }
+
         scan();
     }
 
@@ -71,8 +97,10 @@ public class CaptureAccessibilityService extends AccessibilityService {
         String editable="";
         for(NodeText n:nodes) if(n.editable && n.text.length()>=editable.length()) editable=n.text;
 
-        if(!lastEditable.isEmpty() && editable.isEmpty()) pendingUser=lastEditable;
-        lastEditable=editable;
+        if(!editable.isEmpty()) {
+            lastEditable=editable;
+            lastTyped=editable;
+        }
 
         if(!pendingUser.isEmpty()) {
             boolean seen=false;
@@ -212,7 +240,7 @@ public class CaptureAccessibilityService extends AccessibilityService {
     }
 
     private void resetTurnState() {
-        lastEditable=""; pendingUser=""; lastUser=""; assistantCandidate=""; awaitingAssistant=false;
+        lastEditable=""; lastTyped=""; pendingUser=""; lastUser=""; assistantCandidate=""; awaitingAssistant=false;
         handler.removeCallbacks(finalizeAssistant);
     }
 
