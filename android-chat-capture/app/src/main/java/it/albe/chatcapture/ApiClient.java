@@ -44,6 +44,28 @@ public final class ApiClient {
         });
     }
 
+    public static void sendSnapshot(Context ctx, JSONObject payload) {
+        SharedPreferences p = ctx.getSharedPreferences("capture", Context.MODE_PRIVATE);
+        String endpoint = p.getString("endpoint","");
+        String token = p.getString("token","");
+        if(endpoint.isEmpty() || token.isEmpty()) return;
+        final String snapshotEndpoint = endpoint.replace("/capture-turn","/capture-snapshot");
+        EXEC.execute(() -> {
+            try {
+                HttpURLConnection conn=(HttpURLConnection)new URL(snapshotEndpoint).openConnection();
+                conn.setRequestMethod("POST");
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(8000);
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type","application/json");
+                conn.setRequestProperty("Authorization","Bearer "+token);
+                byte[] body=payload.toString().getBytes(StandardCharsets.UTF_8);
+                try(OutputStream os=conn.getOutputStream()){os.write(body);}
+                try{InputStream is=conn.getResponseCode()>=200&&conn.getResponseCode()<300?conn.getInputStream():conn.getErrorStream(); if(is!=null)is.close();}catch(Exception ignored){}
+            } catch(Exception ignored){}
+        });
+    }
+
     public static void flush(Context ctx) {
         EXEC.execute(() -> {
             SharedPreferences p = ctx.getSharedPreferences("capture", Context.MODE_PRIVATE);
