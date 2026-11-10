@@ -71,8 +71,9 @@ public class CaptureAccessibilityService extends AccessibilityService {
             String low=clicked.toLowerCase(Locale.ROOT);
             String id=s!=null && s.getViewIdResourceName()!=null?s.getViewIdResourceName().toLowerCase(Locale.ROOT):"";
             String desc=s!=null && s.getContentDescription()!=null?s.getContentDescription().toString().toLowerCase(Locale.ROOT):"";
+            String context=clickContext(s).toLowerCase(Locale.ROOT);
 
-            if(low.contains("new chat") || low.contains("nuova chat") || desc.contains("new chat") || desc.contains("nuova chat")) {
+            if(isNewChatControl(low,desc,id,context)) {
                 newConversation("ChatGPT");
             } else if(
                 low.equals("send") || low.equals("invia") ||
@@ -230,6 +231,47 @@ public class CaptureAccessibilityService extends AccessibilityService {
             out.add(new NodeText(t,n.isEditable(),r.top,r.bottom));
         }
         for(int i=0;i<n.getChildCount();i++) collect(n.getChild(i),out);
+    }
+
+    private boolean isNewChatControl(String low,String desc,String id,String context) {
+        String all=(low+" "+desc+" "+id+" "+context).toLowerCase(Locale.ROOT);
+        return all.contains("new chat") ||
+               all.contains("nuova chat") ||
+               all.contains("start new chat") ||
+               all.contains("inizia nuova chat") ||
+               all.contains("create chat") ||
+               all.contains("compose") ||
+               id.contains("new_chat") ||
+               id.contains("newchat") ||
+               id.contains("compose");
+    }
+
+    private String clickContext(AccessibilityNodeInfo n) {
+        if(n==null) return "";
+        StringBuilder sb=new StringBuilder();
+        AccessibilityNodeInfo cur=n;
+        for(int depth=0; depth<4 && cur!=null; depth++) {
+            appendNodeContext(cur,sb);
+            for(int i=0;i<cur.getChildCount();i++) {
+                AccessibilityNodeInfo c=cur.getChild(i);
+                appendNodeContext(c,sb);
+            }
+            AccessibilityNodeInfo p=cur.getParent();
+            if(cur!=n) try { cur.recycle(); } catch(Exception ignored){}
+            cur=p;
+        }
+        if(cur!=null) try { cur.recycle(); } catch(Exception ignored){}
+        return sb.toString();
+    }
+
+    private void appendNodeContext(AccessibilityNodeInfo n,StringBuilder sb) {
+        if(n==null) return;
+        CharSequence t=n.getText();
+        CharSequence d=n.getContentDescription();
+        String id=n.getViewIdResourceName();
+        if(t!=null) sb.append(' ').append(t);
+        if(d!=null) sb.append(' ').append(d);
+        if(id!=null) sb.append(' ').append(id);
     }
 
     private String nodeText(AccessibilityNodeInfo n) {
