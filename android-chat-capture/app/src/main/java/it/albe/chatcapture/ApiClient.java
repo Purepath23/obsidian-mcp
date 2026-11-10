@@ -22,6 +22,28 @@ public final class ApiClient {
         flush(ctx.getApplicationContext());
     }
 
+    public static void ping(Context ctx, JSONObject payload) {
+        SharedPreferences p = ctx.getSharedPreferences("capture", Context.MODE_PRIVATE);
+        String endpoint = p.getString("endpoint","");
+        String token = p.getString("token","");
+        if(endpoint.isEmpty() || token.isEmpty()) return;
+        final String pingEndpoint = endpoint.replace("/capture-turn","/device/ping");
+        EXEC.execute(() -> {
+            try {
+                HttpURLConnection conn=(HttpURLConnection)new URL(pingEndpoint).openConnection();
+                conn.setRequestMethod("POST");
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type","application/json");
+                conn.setRequestProperty("Authorization","Bearer "+token);
+                byte[] body=payload.toString().getBytes(StandardCharsets.UTF_8);
+                try(OutputStream os=conn.getOutputStream()){os.write(body);}
+                try{InputStream is=conn.getResponseCode()>=200&&conn.getResponseCode()<300?conn.getInputStream():conn.getErrorStream(); if(is!=null)is.close();}catch(Exception ignored){}
+            } catch(Exception ignored){}
+        });
+    }
+
     public static void flush(Context ctx) {
         EXEC.execute(() -> {
             SharedPreferences p = ctx.getSharedPreferences("capture", Context.MODE_PRIVATE);
